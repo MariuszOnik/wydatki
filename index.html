@@ -73,6 +73,8 @@ button.primary{background:var(--gold);color:#1b1400;border-color:var(--gold);fon
 .tabs a[aria-current="page"]{background:var(--gold);color:#1b1400}
 .view{display:flex;flex-direction:column;gap:20px;flex:1}
 [hidden]{display:none!important}
+.msum .wide{grid-column:1/-1}
+.msum .big #bEnd{font-size:40px}
 .v.neg{color:var(--red)!important}
 .v.pos{color:var(--mint)!important}
 .stat .sub{font-size:12px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
@@ -228,10 +230,10 @@ h3.sec{margin:0 0 8px;font-size:13px;letter-spacing:.1em;text-transform:uppercas
   </div>
   <div class="msum">
     <div class="stat big"><div class="k">Bilans do teraz</div><div class="v" id="bNow">0</div><div class="sub" id="bNowSub"></div></div>
-    <div class="stat"><div class="k">Wydane</div><div class="v" id="eSpent">0</div></div>
-    <div class="stat"><div class="k">Dodatkowe przychody</div><div class="v" id="eInc">0</div></div>
-    <div class="stat"><div class="k">Z poprzedniego mies.</div><div class="v" id="eCarry">0</div></div>
-    <div class="stat"><div class="k">Zostanie na koniec</div><div class="v" id="bEnd">0</div></div>
+    <div class="stat"><div class="k">Prognoza zarobku</div><div class="v pos" id="eEarnF">0</div><div class="sub" id="eEarnSub"></div></div>
+    <div class="stat"><div class="k">Prognoza wydatków</div><div class="v" id="eSpent">0</div><div class="sub" id="eSpentSub"></div></div>
+    <div class="stat wide" id="eCarryBox" hidden><div class="k">Z poprzedniego miesiąca</div><div class="v" id="eCarry">0</div></div>
+    <div class="stat big"><div class="k">Bilans miesiąca (prognoza)</div><div class="v" id="bEnd">0</div><div class="sub">prognoza zarobku − prognoza wydatków</div></div>
   </div>
 
   <form class="addf" id="addE">
@@ -286,7 +288,7 @@ h3.sec{margin:0 0 8px;font-size:13px;letter-spacing:.1em;text-transform:uppercas
   <details>
     <summary>Przenoszenie bilansu</summary>
     <div class="carryset">
-      <label class="chk" for="carryOn"><input type="checkbox" id="carryOn"> Przenoś bilans z poprzedniego miesiąca</label>
+      <label class="chk" for="carryOn"><input type="checkbox" id="carryOn"> Przenoś bilans z poprzedniego miesiąca (domyślnie wyłączone, każdy miesiąc od zera)</label>
       <label for="openIn">Saldo na start tego miesiąca (puste = automatycznie)
         <span class="row"><input id="openIn" type="text" inputmode="decimal" placeholder="automatycznie" autocomplete="off"><button type="button" id="openSave">Zapisz</button></span>
       </label>
@@ -378,7 +380,7 @@ const getInc=(y,m)=>loadJ("inc-"+mk(y,m),[]);
 const setInc=(y,m,a)=>save("inc-"+mk(y,m),JSON.stringify(a));
 const startOf=it=>it.from||todayKey(new Date(it.id));
 const fixedFrom=f=>f.from||mk(new Date(f.id).getFullYear(),new Date(f.id).getMonth());
-const carryOn=()=>load("carry")!=="0";
+const carryOn=()=>load("carry2")==="1";
 const openOf=(y,m)=>{const o=load("open-"+mk(y,m));if(o===null||o==="")return null;const v=num(o);return isNaN(v)?null:v};
 function calcMonth(y,m){
   const tk=todayKey(new Date()), days=daysOf(y,m);
@@ -397,8 +399,8 @@ function calcMonth(y,m){
     hasData:work>0||gd>0||ex.length>0||inc.length>0||openOf(y,m)!==null};
 }
 function carryIn(y,m,depth=0){
-  const o=openOf(y,m); if(o!==null)return o;
   if(!carryOn()||depth>36)return 0;
+  const o=openOf(y,m); if(o!==null)return o;
   let py=y,pm=m-1; if(pm<0){pm=11;py--;}
   const c=calcMonth(py,pm); if(!c.hasData)return 0;
   return carryIn(py,pm,depth+1)+c.earnedAll+c.incAll-c.spent;
@@ -429,8 +431,11 @@ function updateBalance(){
   parts.push(`praca ${fmt(earned,2)}`);
   if(c.incNow)parts.push(`+ inne ${fmt(c.incNow,2)}`);
   $("bNowSub").textContent=parts.join(" + ").replace("+ + ","+ ")+` − wydane ${fmt(c.spentNow,2)}`;
+  $("eEarnF").textContent=fmt(c.earnedAll+c.incAll,2)+" zł";
+  $("eEarnSub").textContent=c.incAll?`praca ${fmt(c.earnedAll,0)} + inne ${fmt(c.incAll,0)}`:`z pracy (dni z kalendarza)`;
   $("eSpent").textContent=fmt(c.spent,2)+" zł";
-  setMoney($("eInc"),c.incAll,true);
+  $("eSpentSub").textContent=`do dziś ${fmt(c.spentNow,2)}`;
+  $("eCarryBox").hidden=!carryV;
   setMoney($("eCarry"),carryV,true);
   setMoney($("bEnd"),carryV+c.earnedAll+c.incAll-c.spent,false);
 }
@@ -566,7 +571,7 @@ const curType=()=>$("tInc").checked?"inc":"exp";
 function onType(){const t=curType();renderCatPick(t);$("eSubmit").textContent=t==="inc"?"Dodaj przychód":"Dodaj wydatek";$("eNote").placeholder=t==="inc"?"np. premia, sprzedaż na OLX":"np. Biedronka";}
 $("tExp").addEventListener("change",onType);$("tInc").addEventListener("change",onType);
 renderCatPick("exp");
-$("carryOn").addEventListener("change",()=>{save("carry",$("carryOn").checked?"1":"0");renderExp();});
+$("carryOn").addEventListener("change",()=>{save("carry2",$("carryOn").checked?"1":"0");renderExp();});
 $("openSave").addEventListener("click",()=>{const v=$("openIn").value.trim();if(v&&isNaN(num(v))){$("openIn").focus();return;}save("open-"+mk(viewY,viewM),v);renderExp();});
 $("prevE").addEventListener("click",()=>{viewM--;if(viewM<0){viewM=11;viewY--;}renderExp();});
 $("nextE").addEventListener("click",()=>{viewM++;if(viewM>11){viewM=0;viewY++;}renderExp();});
